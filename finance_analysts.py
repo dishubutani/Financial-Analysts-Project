@@ -1,77 +1,69 @@
+import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.express as px
 
-# 1. Load Data
-df = pd.read_csv("European_Bank.csv")
+# Step 3: Load dataset
+@st.cache_data
+def load_data():
+    df = pd.read_csv("European_Bank (2).csv")
+    return df
 
-# 2. Basic Info
-print("Dataset Shape:", df.shape)
-print("\nFirst 5 rows:\n", df.head())
+df = load_data()
 
-# 3. Overall Churn Rate
-churn_rate = df["Exited"].mean() * 100
-print(f"\nOverall Churn Rate: {churn_rate:.2f}%")
+# Step 4: Data Cleaning
+df = df.drop(columns=["Surname"], errors='ignore')
 
-# 4. Geography-wise Churn
-geo_churn = df.groupby("Geography")["Exited"].mean() * 100
-print("\nChurn by Geography:\n", geo_churn)
+# Create Age Groups
+df['AgeGroup'] = pd.cut(df['Age'], bins=[0,30,45,60,100], labels=["<30","30-45","46-60","60+"])
 
-# 5. Age Segmentation
-def age_group(age):
-    if age < 30:
-        return "<30"
-    elif age <= 45:
-        return "30-45"
-    elif age <= 60:
-        return "46-60"
-    else:
-        return "60+"
+# Credit Score Segments
+df['CreditScoreBand'] = pd.cut(df['CreditScore'], bins=[0,500,700,900], labels=["Low","Medium","High"])
 
-df["AgeGroup"] = df["Age"].apply(age_group)
+# Balance Segments
+df['BalanceSegment'] = pd.cut(df['Balance'], bins=[-1,0,100000,1000000], labels=["Zero","Low","High"])
 
-age_churn = df.groupby("AgeGroup")["Exited"].mean() * 100
-print("\nChurn by Age Group:\n", age_churn)
+# Tenure Segments
+df['TenureGroup'] = pd.cut(df['Tenure'], bins=[-1,3,7,10], labels=["New","Mid","Long"])
 
-# 6. High Value Customers
-df["HighValue"] = df["Balance"] > 100000
+# Step 5: Sidebar Filters
+st.sidebar.header("Filters")
+geo = st.sidebar.multiselect("Geography", df['Geography'].unique(), default=df['Geography'].unique())
+age = st.sidebar.multiselect("Age Group", df['AgeGroup'].unique(), default=df['AgeGroup'].unique())
 
-high_value_churn = df[df["HighValue"]]["Exited"].mean() * 100
-print(f"\nHigh Value Customer Churn Rate: {high_value_churn:.2f}%")
+filtered_df = df[(df['Geography'].isin(geo)) & (df['AgeGroup'].isin(age))]
 
-# 7. Credit Score Segmentation
-def credit_group(score):
-    if score < 500:
-        return "Low"
-    elif score < 700:
-        return "Medium"
-    else:
-        return "High"
+# Step 6: KPIs
+st.title("Customer Churn Dashboard")
 
-df["CreditGroup"] = df["CreditScore"].apply(credit_group)
+total_customers = len(filtered_df)
+churn_rate = filtered_df['Exited'].mean() * 100
 
-credit_churn = df.groupby("CreditGroup")["Exited"].mean() * 100
-print("\nChurn by Credit Score:\n", credit_churn)
+col1, col2 = st.columns(2)
+col1.metric("Total Customers", total_customers)
+col2.metric("Churn Rate (%)", round(churn_rate,2))
 
-# 8. Activity Analysis
-activity_churn = df.groupby("IsActiveMember")["Exited"].mean() * 100
-print("\nChurn by Activity:\n", activity_churn)
+# Step 7: Geography-wise churn
+st.subheader("Geography-wise Churn")
+geo_churn = filtered_df.groupby('Geography')['Exited'].mean().reset_index()
+fig1 = px.bar(geo_churn, x='Geography', y='Exited', title="Churn Rate by Geography")
+st.plotly_chart(fig1)
 
-# 9. Visualization
+# Step 8: Age-wise churn
+st.subheader("Age Group Churn")
+age_churn = filtered_df.groupby('AgeGroup')['Exited'].mean().reset_index()
+fig2 = px.bar(age_churn, x='AgeGroup', y='Exited', title="Churn Rate by Age Group")
+st.plotly_chart(fig2)
 
-# Geography Bar Chart
-geo_churn.plot(kind="bar")
-plt.title("Churn Rate by Geography")
-plt.ylabel("Churn %")
-plt.show()
+# Step 9: High-value churn
+st.subheader("High Balance Customer Churn")
+high_value = filtered_df[filtered_df['BalanceSegment'] == 'High']
+high_churn = high_value['Exited'].mean() * 100
+st.metric("High Value Churn (%)", round(high_churn,2))
 
-# Age Group Chart
-age_churn.plot(kind="bar")
-plt.title("Churn Rate by Age Group")
-plt.ylabel("Churn %")
-plt.show()
+# Step 10: Tenure vs churn
+st.subheader("Tenure vs Churn")
+tenure_churn = filtered_df.groupby('TenureGroup')['Exited'].mean().reset_index()
+fig3 = px.line(tenure_churn, x='TenureGroup', y='Exited', title="Churn by Tenure")
+st.plotly_chart(fig3)
 
-# Pie Chart (Churn vs Retained)
-df["Exited"].value_counts().plot(kind="pie", autopct="%1.1f%%")
-plt.title("Churn vs Retained")
-plt.ylabel("")
-plt.show()
+

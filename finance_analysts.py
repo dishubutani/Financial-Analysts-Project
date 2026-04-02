@@ -1,69 +1,156 @@
-import streamlit as st
+# ---------------------------------------
+# 1. IMPORT LIBRARIES
+# ---------------------------------------
 import pandas as pd
-import plotly.express as px
+import numpy as np
 
-# Step 3: Load dataset
-@st.cache_data
-def load_data():
-    df = pd.read_csv("European_Bank (2).csv")
-    return df
+# ---------------------------------------
+# 2. DATA INGESTION & VALIDATION
+# ---------------------------------------
+df = pd.read_csv("European_Bank.csv")
 
-df = load_data()
+print("Dataset Shape:", df.shape)
+print("\nColumns:\n", df.columns)
 
-# Step 4: Data Cleaning
-df = df.drop(columns=["Surname"], errors='ignore')
+# Validate key fields
+required_cols = ['Tenure', 'NumOfProducts', 'IsActiveMember',
+                 'Balance', 'CreditScore', 'EstimatedSalary', 'Exited']
 
-# Create Age Groups
-df['AgeGroup'] = pd.cut(df['Age'], bins=[0,30,45,60,100], labels=["<30","30-45","46-60","60+"])
+for col in required_cols:
+    print(f"{col} missing values:", df[col].isnull().sum())
 
-# Credit Score Segments
-df['CreditScoreBand'] = pd.cut(df['CreditScore'], bins=[0,500,700,900], labels=["Low","Medium","High"])
+# Check binary consistency
+binary_cols = ['IsActiveMember', 'HasCrCard', 'Exited']
+for col in binary_cols:
+    print(f"\n{col} unique values:", df[col].unique())
+
+# Confirm churn labeling
+print("\nChurn Distribution:\n", df['Exited'].value_counts())
+
+# ---------------------------------------
+# 3. DATA CLEANING & PREPARATION
+# ---------------------------------------
+
+# Remove irrelevant columns
+df.drop(['Surname', 'CustomerId'], axis=1, inplace=True, errors='ignore')
+
+# Handle missing values
+df.fillna(method='ffill', inplace=True)
+
+# ---------------------------------------
+# 4. FEATURE ENGINEERING
+# ---------------------------------------
+
+# Age Groups
+df['AgeGroup'] = pd.cut(df['Age'],
+                       bins=[0, 30, 45, 60, 100],
+                       labels=['<30', '30-45', '46-60', '60+'])
+
+# Credit Score Bands
+df['CreditBand'] = pd.cut(df['CreditScore'],
+                         bins=[0, 500, 700, 1000],
+                         labels=['Low', 'Medium', 'High'])
+
+# Tenure Groups
+df['TenureGroup'] = pd.cut(df['Tenure'],
+                          bins=[-1, 3, 7, 20],
+                          labels=['New', 'Mid-term', 'Long-term'])
 
 # Balance Segments
-df['BalanceSegment'] = pd.cut(df['Balance'], bins=[-1,0,100000,1000000], labels=["Zero","Low","High"])
+df['BalanceSegment'] = pd.cut(df['Balance'],
+                             bins=[-1, 1, 100000, 300000],
+                             labels=['Zero', 'Low', 'High'])
 
-# Tenure Segments
-df['TenureGroup'] = pd.cut(df['Tenure'], bins=[-1,3,7,10], labels=["New","Mid","Long"])
+# ---------------------------------------
+# 5. CHURN DISTRIBUTION ANALYSIS
+# ---------------------------------------
 
-# Step 5: Sidebar Filters
-st.sidebar.header("Filters")
-geo = st.sidebar.multiselect("Geography", df['Geography'].unique(), default=df['Geography'].unique())
-age = st.sidebar.multiselect("Age Group", df['AgeGroup'].unique(), default=df['AgeGroup'].unique())
+# Overall churn rate
+overall_churn = df['Exited'].mean()
+print("\nOverall Churn Rate:", round(overall_churn, 3))
 
-filtered_df = df[(df['Geography'].isin(geo)) & (df['AgeGroup'].isin(age))]
+# Segment-wise churn
+def segment_churn(col):
+    result = df.groupby(col)['Exited'].mean().sort_values(ascending=False)
+    print(f"\nChurn Rate by {col}:\n", result)
 
-# Step 6: KPIs
-st.title("Customer Churn Dashboard")
+segment_churn('Geography')
+segment_churn('AgeGroup')
+segment_churn('CreditBand')
+segment_churn('TenureGroup')
+segment_churn('BalanceSegment')
 
-total_customers = len(filtered_df)
-churn_rate = filtered_df['Exited'].mean() * 100
+# Churn contribution by segment size
+segment_size = df.groupby('Geography')['Exited'].agg(['count', 'sum'])
+segment_size['Contribution'] = segment_size['sum'] / df['Exited'].sum()
+print("\nChurn Contribution by Geography:\n", segment_size)
 
-col1, col2 = st.columns(2)
-col1.metric("Total Customers", total_customers)
-col2.metric("Churn Rate (%)", round(churn_rate,2))
+# Compare churned vs retained
+churned = df[df['Exited'] == 1]
+retained = df[df['Exited'] == 0]
 
-# Step 7: Geography-wise churn
-st.subheader("Geography-wise Churn")
-geo_churn = filtered_df.groupby('Geography')['Exited'].mean().reset_index()
-fig1 = px.bar(geo_churn, x='Geography', y='Exited', title="Churn Rate by Geography")
-st.plotly_chart(fig1)
+print("\nAvg Balance (Churned vs Retained):",
+      churned['Balance'].mean(), retained['Balance'].mean())
 
-# Step 8: Age-wise churn
-st.subheader("Age Group Churn")
-age_churn = filtered_df.groupby('AgeGroup')['Exited'].mean().reset_index()
-fig2 = px.bar(age_churn, x='AgeGroup', y='Exited', title="Churn Rate by Age Group")
-st.plotly_chart(fig2)
+# ---------------------------------------
+# 6. COMPARATIVE DEMOGRAPHIC ANALYSIS
+# ---------------------------------------
 
-# Step 9: High-value churn
-st.subheader("High Balance Customer Churn")
-high_value = filtered_df[filtered_df['BalanceSegment'] == 'High']
-high_churn = high_value['Exited'].mean() * 100
-st.metric("High Value Churn (%)", round(high_churn,2))
+# Gender churn
+gender_churn = df.groupby('Gender')['Exited'].mean()
+print("\nGender Churn:\n", gender_churn)
 
-# Step 10: Tenure vs churn
-st.subheader("Tenure vs Churn")
-tenure_churn = filtered_df.groupby('TenureGroup')['Exited'].mean().reset_index()
-fig3 = px.line(tenure_churn, x='TenureGroup', y='Exited', title="Churn by Tenure")
-st.plotly_chart(fig3)
+# Geography vs Age interaction
+geo_age = df.groupby(['Geography', 'AgeGroup'])['Exited'].mean().unstack()
+print("\nGeography vs Age Churn:\n", geo_age)
 
+# Financial stability vs churn
+financial = df.groupby('Exited')[['Balance', 'EstimatedSalary', 'CreditScore']].mean()
+print("\nFinancial Comparison:\n", financial)
 
+# ---------------------------------------
+# 7. HIGH-VALUE CUSTOMER CHURN ANALYSIS
+# ---------------------------------------
+
+# High-value customers
+high_value = df[df['BalanceSegment'] == 'High']
+
+# High-value churn rate
+hv_churn = high_value['Exited'].mean()
+print("\nHigh Value Churn Rate:", hv_churn)
+
+# Salary vs Balance
+hv_stats = high_value.groupby('Exited')[['Balance', 'EstimatedSalary']].mean()
+print("\nHigh Value Stats:\n", hv_stats)
+
+# Revenue at risk
+revenue_risk = high_value[high_value['Exited'] == 1]['Balance'].sum()
+print("\nRevenue at Risk:", revenue_risk)
+
+# ---------------------------------------
+# 8. KPI CALCULATIONS
+# ---------------------------------------
+
+kpis = {}
+
+# Overall Churn Rate
+kpis['Overall Churn Rate'] = df['Exited'].mean()
+
+# Segment Churn Rate (example: Geography)
+kpis['Segment Churn Rate'] = df.groupby('Geography')['Exited'].mean().to_dict()
+
+# High Value Churn Ratio
+kpis['High Value Churn Ratio'] = high_value['Exited'].mean()
+
+# Geographic Risk Index (weighted churn)
+geo_risk = df.groupby('Geography')['Exited'].mean() * df['Geography'].value_counts(normalize=True)
+kpis['Geographic Risk Index'] = geo_risk.to_dict()
+
+# Engagement Drop Indicator
+inactive_churn = df[df['IsActiveMember'] == 0]['Exited'].mean()
+active_churn = df[df['IsActiveMember'] == 1]['Exited'].mean()
+kpis['Engagement Drop Indicator'] = inactive_churn - active_churn
+
+print("\n--- KPI SUMMARY ---")
+for k, v in kpis.items():
+    print(f"{k}: {v}")

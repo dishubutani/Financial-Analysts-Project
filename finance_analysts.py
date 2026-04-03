@@ -1,13 +1,10 @@
-# ---------------------------------------
-# 1. IMPORT LIBRARIES
-# ---------------------------------------
 import pandas as pd
 import numpy as np
 
-# ---------------------------------------
-# 2. DATA INGESTION & VALIDATION
-# ---------------------------------------
-df = pd.read_csv("European_Bank.csv")
+
+
+# 1. DATA INGESTION & VALIDATION
+df = pd.read_csv('European_Bank (1).csv')
 
 print("Dataset Shape:", df.shape)
 print("\nColumns:\n", df.columns)
@@ -27,20 +24,15 @@ for col in binary_cols:
 # Confirm churn labeling
 print("\nChurn Distribution:\n", df['Exited'].value_counts())
 
-# ---------------------------------------
-# 3. DATA CLEANING & PREPARATION
-# ---------------------------------------
 
+# 2. DATA CLEANING & PREPARATION
 # Remove irrelevant columns
 df.drop(['Surname', 'CustomerId'], axis=1, inplace=True, errors='ignore')
 
 # Handle missing values
-df.fillna(method='ffill', inplace=True)
+df.ffill(inplace=True)
 
-# ---------------------------------------
-# 4. FEATURE ENGINEERING
-# ---------------------------------------
-
+# 3. FEATURE ENGINEERING
 # Age Groups
 df['AgeGroup'] = pd.cut(df['Age'],
                        bins=[0, 30, 45, 60, 100],
@@ -61,17 +53,16 @@ df['BalanceSegment'] = pd.cut(df['Balance'],
                              bins=[-1, 1, 100000, 300000],
                              labels=['Zero', 'Low', 'High'])
 
-# ---------------------------------------
-# 5. CHURN DISTRIBUTION ANALYSIS
-# ---------------------------------------
 
+
+# 4. CHURN DISTRIBUTION ANALYSIS
 # Overall churn rate
 overall_churn = df['Exited'].mean()
 print("\nOverall Churn Rate:", round(overall_churn, 3))
 
 # Segment-wise churn
 def segment_churn(col):
-    result = df.groupby(col)['Exited'].mean().sort_values(ascending=False)
+    result = df.groupby(col,observed=False)['Exited'].mean().sort_values(ascending=False)
     print(f"\nChurn Rate by {col}:\n", result)
 
 segment_churn('Geography')
@@ -92,26 +83,23 @@ retained = df[df['Exited'] == 0]
 print("\nAvg Balance (Churned vs Retained):",
       churned['Balance'].mean(), retained['Balance'].mean())
 
-# ---------------------------------------
-# 6. COMPARATIVE DEMOGRAPHIC ANALYSIS
-# ---------------------------------------
 
+
+# 5. COMPARATIVE DEMOGRAPHIC ANALYSIS
 # Gender churn
 gender_churn = df.groupby('Gender')['Exited'].mean()
 print("\nGender Churn:\n", gender_churn)
 
 # Geography vs Age interaction
-geo_age = df.groupby(['Geography', 'AgeGroup'])['Exited'].mean().unstack()
+geo_age = df.groupby(['Geography', 'AgeGroup'],observed=False)['Exited'].mean().unstack()
 print("\nGeography vs Age Churn:\n", geo_age)
 
 # Financial stability vs churn
 financial = df.groupby('Exited')[['Balance', 'EstimatedSalary', 'CreditScore']].mean()
 print("\nFinancial Comparison:\n", financial)
 
-# ---------------------------------------
-# 7. HIGH-VALUE CUSTOMER CHURN ANALYSIS
-# ---------------------------------------
 
+# 6. HIGH-VALUE CUSTOMER CHURN ANALYSIS
 # High-value customers
 high_value = df[df['BalanceSegment'] == 'High']
 
@@ -127,10 +115,9 @@ print("\nHigh Value Stats:\n", hv_stats)
 revenue_risk = high_value[high_value['Exited'] == 1]['Balance'].sum()
 print("\nRevenue at Risk:", revenue_risk)
 
-# ---------------------------------------
-# 8. KPI CALCULATIONS
-# ---------------------------------------
 
+
+# 7. KPI CALCULATIONS
 kpis = {}
 
 # Overall Churn Rate
